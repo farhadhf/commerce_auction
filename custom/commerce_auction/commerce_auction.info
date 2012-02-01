@@ -1,0 +1,8 @@
+name = Commerce auction
+description = Uses comment system to simulate auction bids on product displays
+package = Bazore
+dependencies[] = commerce
+dependencies[] = comment
+core = 7.x
+version = "7.x-0.1"
+

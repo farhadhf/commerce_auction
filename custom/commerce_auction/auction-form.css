@@ -1,0 +1,52 @@
+/*
+ * @file ajax_example.css
+ *   CSS for ajax_example.
+ *
+ * See @link ajax_example_dependent_dropdown_degrades @endlink for
+ * details on what this file does. It is not used in any other example.
+ */
+ 
+/* hide the next button when not degrading to non-javascript browser */
+html.js .next-button { 
+  display: none; 
+}
+
+/* Make the next/choose button align to the right of the select control */
+.form-item-dropdown-first, .form-item-question-type-select {
+  display: inline-block;
+}
+
+
+#product-info-wrapper {
+  float: right;
+  width: 100%;
+}
+
+#product-name-wrapper {
+  float: right;
+  width: 100%;
+}
+
+.form-item {
+  float:right;
+  width: 100%;
+}
+
+.category-form-item {
+  float: right;
+  margin-right: .25em;
+}
+
+table.invisible-table * {
+  border: none;
+  background: none;
+  padding: 0;
+  margin:0;
+  width:auto;
+  height:auto;
+}
+
+table.invisible-table tr td {
+  padding: 2px;
+  float: right;
+}

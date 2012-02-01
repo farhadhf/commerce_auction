@@ -1,0 +1,199 @@
+<?php
+
+/**
+ * LONGTERM TODO LIST:
+ * TODO: add reverse auction ability.
+ * TODO: User OG to create unions and user groups.
+ */
+
+/**
+ * implements hook_menu()
+ */
+function commerce_auction_menu()
+{
+  $items = array();
+  
+  $items['products/autocomplete'] = array(
+    'commerce_auction product autocomplete',
+    'page callback' => 'commerce_auction_product_autocomplete',
+    'access callback' => TRUE,
+    'file' => 'includes/commerce_auction.pages.inc',
+    'type' => MENU_CALLBACK,
+  );
+  
+  // we need to add a system to check user credit for creating auctions...
+  $items['add/auction'] = array(
+    'title' => t('Create a new auction'),
+    'type' => MENU_NORMAL_ITEM,
+    'access callback' => TRUE,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_auction_add_auction_wizard'),
+    'file' => 'includes/commerce_auction.pages.inc',
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'main-menu',
+  );
+  
+  
+  $items['add/product'] = array(
+    'title' => t('Create a new product'),
+    'access arguments' => array(''),
+    'type' => MENU_NORMAL_ITEM,
+    'page callback' => 'commerce_auction_add_product_page',
+    'file' => 'includes/commerce_auction.pages.inc',
+  );
+  
+  
+  return $items;
+}
+
+/**
+ * implements hook_comment_presave()
+ * Check bid amount of comments on auction display types before saving them.
+ */
+function commerce_auction_comment_presave($comment)
+{
+  $node = node_load($comment->nid);
+  
+  if ( !in_array($node->type, variable_get('auction_types' , array('auction_display'))))
+  {
+    return;
+  }
+  $bid = field_get_items('comment', $comment, 'field_auction_bid');
+  
+  $pid = field_get_items('node', $node, 'field_auction_reference');
+  $product = commerce_product_load($pid[0]['product_id']);
+  $highest_bid = field_get_items('commerce_product', $product, 'commerce_price');
+  
+  global $user;
+  
+  if ($bid[0]['amount'] < $highest_bid[0]['amount'])
+  {
+    drupal_set_message(t("Your bid amount (@amount) is lower that previous bid! you must enter a higher bid.",
+                         array("@amount" => commerce_currency_format($bid[0]['amount'], commerce_default_currency()))),
+                       'error');
+    // somehow stop the comment from being saved!
+    drupal_goto('node/' . $node->nid);
+  }
+  if ($node->last_comment_uid == $user->uid)
+  {
+    drupal_set_message(t("Your last bid is the highest bid, you can not bid on this product again until someone posts a higher bid."), 'error');
+    // somehow stop the comment from being saved!
+    drupal_goto('node/' . $node->nid);
+  }
+}
+
+/**
+ * implements hook_comment_insert()
+ * Update product price on comment save when node type is one of auction display node types.
+ */
+function commerce_auction_comment_insert($comment)
+{
+  $node = node_load($comment->nid);
+  if ($node->type != 'auction_display')
+    return ;
+  $pid = field_get_items('node', $node, 'field_auction_reference');
+  $bid = field_get_items('comment', $comment, 'field_auction_bid');
+  $product = commerce_product_load($pid[0]['product_id']);
+  $price = field_get_items('product', $product, 'commerce_price');
+  // TODO: make this undependent of language code
+  
+  $product->commerce_price['und'][0] = $bid[0];
+  dsm($product);
+  commerce_product_save($product);
+}
+
+
+/**
+ * Sort comments on auction types by bids.
+ * TODO: Remove Reply link.
+ */
+function commerce_auction_preprocess_comment_wrapper(&$variables)
+{
+  // Provide contextual information.
+  $variables['node'] = $variables['content']['#node'];
+  $variables['display_mode'] = variable_get('comment_default_mode_' . $variables['node']->type, COMMENT_MODE_THREADED);
+  if (!in_array($variables['node']->type, variable_get('auction_types' , array('auction_display'))))
+  {
+    return;
+  }
+  
+  // Sort comments by bid value if exists
+  $bids = array();
+  $comments = $variables['content']['comments'];
+  
+  foreach ($comments as $index => $comment) {
+    if (!is_array($comment) || !isset($comment['#comment']))
+      continue;
+    $bid = field_get_items('comment', $comment['#comment'], 'field_auction_bid');
+    $comment['#comment']->subject = '';
+    
+    $bids[$index] = $bid[0]['amount'];
+    
+    unset($variables['content']['comments'][$index]);
+  }
+  if (!empty($bids)) {
+    // sort bids from highest bid to lowest.
+    uasort($bids, 'compare_comment_bids');
+    $j = 1;
+    // modify $variables so that the comments are printed out sorted by bid value
+    foreach (array_keys($bids) as $i) {
+      $variables['content']['comments'][$j] = $comments[$i];
+      $j++;
+    }
+  }
+  
+  // The comment form is optional and may not exist.
+  $variables['content'] += array('comment_form' => array());
+}
+
+
+function compare_comment_bids($a, $b)
+{
+  if ($a == $b)
+    return 0;
+  
+  return ($a > $b) ? -1 : 1;
+}
+
+
+function commerce_auction_commerce_payment_order_paid_in_full($transaction)
+{
+  watchdog('debug', 'hook_commerce_payment_order_paid_in_full');
+  // split order into multiple orders each one containing products only from one seller
+  dsm($transaction);
+  $order = commerce_order_load($transaction->order_id);
+  dsm($order);
+}
+
+function commerce_auction_commerce_payment_transaction_insert($transaction) {                                        
+  watchdog('debug', 'pe_commerce_commerce_payment_transaction_insert (' . $transaction->order_id . ')');
+  $order = commerce_order_load($transaction->order_id);
+  $balance1 = commerce_payment_order_balance($order);
+  $totals = array($transaction->currency_code => $transaction->amount);
+  $balance2 = commerce_payment_order_balance($order, $totals);
+  watchdog('debug', 'Transaction <pre>' . print_r($transaction, TRUE) 
+                   . "</pre> Order <pre>" . print_r($order,  TRUE)
+                   . "</pre>Balance1 = <pre>" . print_r($balance1, TRUE)
+                   . '</pre>Balance 2<pre>' . print_r($balance2, TRUE) . '</pre>'
+  );                                                                                               
+}
+
+function commerce_auction_node_view($node, $view_mode, $langcode) {
+  dsm($node);
+  if ($node->type == "auction_display" && $node->comment == COMMENT_NODE_OPEN) {
+    $timeout = field_get_items('node', $node, 'field_auction_timeout', $langcode) ;
+    if ( time() > $timeout[0]['timeout'] + $node->created) {
+      // add the product referenced by this node to this user's cart
+      // Why this won't work??
+      $line_item = commerce_line_item_new('product');
+      $line_item->commerce_product = $node->field_auction_reference;
+      $line_item->quantity = 1;
+      $line_item->data = "you won the auction";
+      commerce_cart_product_add($node->last_comment_uid,$line_item);
+      
+      // close comments on this node
+      $node->comment = COMMENT_NODE_CLOSED;
+      node_save($node);
+    }
+  }
+}
