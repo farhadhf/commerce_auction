@@ -34,15 +34,6 @@ function commerce_auction_menu()
   );
   
   
-  $items['add/product'] = array(
-    'title' => t('Create a new product'),
-    'access arguments' => array(''),
-    'type' => MENU_NORMAL_ITEM,
-    'page callback' => 'commerce_auction_add_product_page',
-    'file' => 'includes/commerce_auction.pages.inc',
-  );
-  
-  
   return $items;
 }
 
